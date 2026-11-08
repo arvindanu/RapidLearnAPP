@@ -1,0 +1,32 @@
+{
+  "appVersion": "1.0.0",
+  "appVersionCode": 1,
+  "appVersionName": "1.0.0",
+  "backgroundColor": "#090b13",
+  "display": "standalone",
+  "enableNotifications": false,
+  "enableSiteSettingsShortcut": true,
+  "fallbackType": "customtabs",
+  "host": "__RAPIDLEARN_HOST__",
+  "iconUrl": "__RAPIDLEARN_HOST__/icons/rapidlearn-512.png",
+  "launcherName": "RapidLearn",
+  "maskableIconUrl": "__RAPIDLEARN_HOST__/icons/rapidlearn-maskable-512.png",
+  "name": "RapidLearn — Learn Something New",
+  "navigationColor": "#090b13",
+  "navigationColorDark": "#090b13",
+  "orientation": "default",
+  "packageId": "com.rapidlearn.app",
+  "splashScreenFadeOutDuration": 300,
+  "startUrl": "/?source=android",
+  "themeColor": "#090b13",
+  "themeColorDark": "#090b13",
+  "webManifestUrl": "__RAPIDLEARN_HOST__/manifest.webmanifest",
+  "minSdkVersion": 23,
+  "signingKey": {
+    "path": "__KEYSTORE_PATH__",
+    "alias": "rapidlearn"
+  },
+  "fingerprints": [],
+  "shortcuts": [],
+  "additionalTrustedOrigins": []
+}
