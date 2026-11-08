@@ -1,3 +1,4 @@
+
 name: Build RapidLearn Android app
 
 on:
@@ -16,6 +17,7 @@ jobs:
   build:
     name: Build signed Android APK and AAB
     runs-on: ubuntu-latest
+
     steps:
       - name: Check out source
         uses: actions/checkout@v4
@@ -32,13 +34,22 @@ jobs:
           distribution: temurin
           java-version: '17'
 
+      # FIX: Explicitly request supported SDK packages.
+      # Do not request the obsolete "tools" package.
       - name: Set up Android SDK
         uses: android-actions/setup-android@v3
+        with:
+          packages: 'platform-tools'
 
       - name: Install Android SDK packages
         run: |
           yes | sdkmanager --licenses >/dev/null
-          sdkmanager "platform-tools" "platforms;android-35" "platforms;android-36" "build-tools;35.0.0" "build-tools;36.0.0"
+          sdkmanager \
+            "platform-tools" \
+            "platforms;android-35" \
+            "platforms;android-36" \
+            "build-tools;35.0.0" \
+            "build-tools;36.0.0"
 
       - name: Install dependencies and verify Next.js production build
         run: |
@@ -50,16 +61,19 @@ jobs:
           RAPIDLEARN_URL: ${{ vars.RAPIDLEARN_URL }}
         run: |
           test -n "$RAPIDLEARN_URL" || (echo "Set repository variable RAPIDLEARN_URL first." && exit 1)
+
           for attempt in $(seq 1 60); do
-            if curl --fail --silent --show-error "$RAPIDLEARN_URL/manifest.webmanifest" -o /dev/null 2>/dev/null \
-              && curl --fail --silent --show-error "$RAPIDLEARN_URL/icons/rapidlearn-512.png" -o /dev/null 2>/dev/null; then
+            if curl --fail --silent "$RAPIDLEARN_URL/manifest.webmanifest" -o /dev/null \
+              && curl --fail --silent "$RAPIDLEARN_URL/icons/rapidlearn-512.png" -o /dev/null; then
               echo "The deployed RapidLearn PWA and launcher icon are available."
               exit 0
             fi
+
             echo "Waiting for Vercel deployment ($attempt/60)..."
             sleep 10
           done
-          echo "The PWA files were not available at RAPIDLEARN_URL after 10 minutes."
+
+          echo "The PWA files were not available after 10 minutes."
           exit 1
 
       - name: Validate Android build settings
@@ -70,17 +84,16 @@ jobs:
           ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
           ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
         run: |
-          test -n "$RAPIDLEARN_URL" || (echo "Set repository variable RAPIDLEARN_URL to your public Vercel HTTPS URL." && exit 1)
-          test -n "$ANDROID_KEYSTORE_BASE64" || (echo "Add the ANDROID_KEYSTORE_BASE64 repository secret. See README.md." && exit 1)
-          test -n "$ANDROID_KEYSTORE_PASSWORD" || (echo "Add the ANDROID_KEYSTORE_PASSWORD repository secret." && exit 1)
-          test -n "$ANDROID_KEY_PASSWORD" || (echo "Add the ANDROID_KEY_PASSWORD repository secret." && exit 1)
-          test -n "$ANDROID_KEY_ALIAS" || (echo "Add the ANDROID_KEY_ALIAS repository secret." && exit 1)
+          test -n "$RAPIDLEARN_URL" || (echo "Set RAPIDLEARN_URL to your public Vercel HTTPS URL." && exit 1)
+          test -n "$ANDROID_KEYSTORE_BASE64" || (echo "Add ANDROID_KEYSTORE_BASE64 secret." && exit 1)
+          test -n "$ANDROID_KEYSTORE_PASSWORD" || (echo "Add ANDROID_KEYSTORE_PASSWORD secret." && exit 1)
+          test -n "$ANDROID_KEY_PASSWORD" || (echo "Add ANDROID_KEY_PASSWORD secret." && exit 1)
+          test -n "$ANDROID_KEY_ALIAS" || (echo "Add ANDROID_KEY_ALIAS secret." && exit 1)
 
       - name: Prepare Android signing key
         env:
           ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
         run: |
-          mkdir -p android
           echo "$ANDROID_KEYSTORE_BASE64" | base64 --decode > rapidlearn-release.keystore
           test -s rapidlearn-release.keystore
 
@@ -111,7 +124,10 @@ jobs:
           BUBBLEWRAP_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
           BUBBLEWRAP_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
         run: |
-          bubblewrap build --skipPwaValidation --signingKeyPath="$GITHUB_WORKSPACE/rapidlearn-release.keystore" --signingKeyAlias="$ANDROID_KEY_ALIAS"
+          bubblewrap build \
+            --skipPwaValidation \
+            --signingKeyPath="$GITHUB_WORKSPACE/rapidlearn-release.keystore" \
+            --signingKeyAlias="$ANDROID_KEY_ALIAS"
 
       - name: Generate Digital Asset Links file
         working-directory: android
@@ -121,9 +137,28 @@ jobs:
           ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
           ANDROID_PACKAGE_ID: ${{ vars.ANDROID_PACKAGE_ID }}
         run: |
-          FINGERPRINT=$(keytool -list -v -keystore "$GITHUB_WORKSPACE/rapidlearn-release.keystore" -alias "$ANDROID_KEY_ALIAS" -storepass "$ANDROID_KEYSTORE_PASSWORD" -keypass "$ANDROID_KEY_PASSWORD" | awk -F': ' '/SHA256:/{print $2; exit}')
+          FINGERPRINT=$(keytool -list -v \
+            -keystore "$GITHUB_WORKSPACE/rapidlearn-release.keystore" \
+            -alias "$ANDROID_KEY_ALIAS" \
+            -storepass "$ANDROID_KEYSTORE_PASSWORD" \
+            -keypass "$ANDROID_KEY_PASSWORD" \
+            | awk -F': ' '/SHA256:/{print $2; exit}')
+
           test -n "$FINGERPRINT" || (echo "Could not read signing certificate SHA-256 fingerprint." && exit 1)
-          CERT_FINGERPRINT="$FINGERPRINT" node -e 'const fs=require("fs"); const data=[{relation:["delegate_permission/common.handle_all_urls"],target:{namespace:"android_app",package_name:process.env.ANDROID_PACKAGE_ID || "com.rapidlearn.app",sha256_cert_fingerprints:[process.env.CERT_FINGERPRINT]}}]; fs.writeFileSync("assetlinks.json", JSON.stringify(data,null,2)+"\n");'
+
+          CERT_FINGERPRINT="$FINGERPRINT" node -e '
+            const fs = require("fs");
+            const data = [{
+              relation: ["delegate_permission/common.handle_all_urls"],
+              target: {
+                namespace: "android_app",
+                package_name: process.env.ANDROID_PACKAGE_ID || "com.rapidlearn.app",
+                sha256_cert_fingerprints: [process.env.CERT_FINGERPRINT]
+              }
+            }];
+            fs.writeFileSync("assetlinks.json", JSON.stringify(data, null, 2) + "\n");
+          '
+
           cat assetlinks.json
 
       - name: Upload Android build artifacts
